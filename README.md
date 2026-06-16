@@ -174,6 +174,20 @@ Sources:
 
 It writes one `<source>-<date>-<title>-<hash>.md` per session, skips sessions with no real conversational turns, and is idempotent (re-running overwrites the same files). This is the **stage** step — distillation into `wiki/` is a separate, controllable LLM pass (see below) so you decide how much token spend goes into building the wiki.
 
+### Distilling raw/ → wiki/ in a loop
+
+`distill-loop.sh` runs the LLM pass with the [Codex CLI](https://github.com/openai/codex), in **resumable batches**. Processed files move to `raw/_processed/`, so each iteration starts with fresh context (flat per-batch cost) and you can `Ctrl-C` / re-run anytime without redoing work.
+
+```bash
+./distill-loop.sh /path/to/your/vault          # batches of 15 until raw/ is empty
+./distill-loop.sh /path/to/your/vault 5         # smaller batches — cheaper, safer to trial
+FULL_AUTO=1 ./distill-loop.sh /path/to/your/vault   # bypass approvals (removes sandbox — only once trusted)
+```
+
+Each batch: reads `wiki/index.md` for context, distills the next N raw sessions into cross-linked wiki pages (skipping junk), updates `index.md` + `log.md` + `hot.md`, then moves the processed files. **Trial it small first** — run with a batch of 5, eyeball the pages, then let it grind. A large history (1,000s of sessions) is real token spend; the loop just makes it controllable and interruptible.
+
+> Uses Codex by default, but the batch prompt is plain — paste it into Claude Code, Cursor, or any agent with file access to run the same loop.
+
 ---
 
 ## Self-ingest workflow
