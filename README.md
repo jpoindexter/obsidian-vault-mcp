@@ -77,7 +77,7 @@ The hot cache means your agent can read one ~500-word file to get recent context
 ### Install
 
 ```bash
-git clone https://github.com/theft-studio/obsidian-vault-mcp
+git clone https://github.com/jpoindexter/obsidian-vault-mcp
 cd obsidian-vault-mcp
 ```
 
