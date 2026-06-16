@@ -157,6 +157,25 @@ Or create the folders manually and let the agent build the CLAUDE.md on first us
 
 ---
 
+## Importing existing chat history
+
+Already have months of Claude Code or Codex conversations? `import-chats.mjs` mechanically extracts them into `raw/` as clean per-session markdown (tool-noise, hooks, and environment boilerplate stripped) — **no LLM, no cost, reversible.** Then let your agent self-ingest `raw/` → `wiki/` in batches.
+
+```bash
+node import-chats.mjs /path/to/your/vault --source both
+node import-chats.mjs /path/to/your/vault --source claude --limit 50   # try a slice first
+node import-chats.mjs /path/to/your/vault --source codex --dry-run     # preview counts only
+```
+
+Sources:
+- `claude` — `~/.claude/projects/**/*.jsonl` (Claude Code transcripts)
+- `codex` — `~/.codex/sessions` + `~/.codex/archived_sessions/rollout-*.jsonl`
+- `both` — default
+
+It writes one `<source>-<date>-<title>-<hash>.md` per session, skips sessions with no real conversational turns, and is idempotent (re-running overwrites the same files). This is the **stage** step — distillation into `wiki/` is a separate, controllable LLM pass (see below) so you decide how much token spend goes into building the wiki.
+
+---
+
 ## Self-ingest workflow
 
 Tell your agent to ingest something and it runs the full loop without you:
