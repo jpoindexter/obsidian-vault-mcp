@@ -27,6 +27,23 @@ const OUT = join(vault, "wiki", "bookmarks");
 function slugify(s) {
   return (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "untitled";
 }
+
+// Topic classifier — first match wins, so order = priority (most specific first).
+// Tuned to this corpus's signal: AI/agents/Claude dominate, then design, frontend, tooling.
+const TOPICS = [
+  ["AI Agents", /\b(agent|agents|agentic|swarm|multi-agent|autonomous|voltagent|copilotkit|multiplexer|a2a)\b/i],
+  ["Claude · MCP · Skills", /\b(claude|mcp|skills?|codex|cursor|anthropic|openclaw|windsurf|hermes|opencode|spec-kit|spec-driven)\b/i],
+  ["LLM · Prompts · Models", /\b(llm|gpt|prompts?|deepseek|gemma|qwen|\brag\b|tts|embeddings?|gemini|mlx|ollama|fine-?tun|diffusion|hugging ?face)\b/i],
+  ["Design · UI Kits", /\b(design|ui ?kits?|figma|shadcn|components?|icons?|fonts?|colou?rs?|tokens?|wireframe|mockup|illustration|svgl?|logos?|gradient|palette|oklch|\bhex\b|brand(fetch|ing)?)\b/i],
+  ["Studios · Agencies · Inspiration", /\b(agenc(y|ies)|studios?|galler(y|ies)|inspiration|showcase|awwwards|portfolio|brutalis[mt]|neo-?brutal|creative)\b/i],
+  ["Frontend · 3D · Motion", /\b(react|next\.?js|vue|svelte|tailwind|\bcss\b|\bhtml\b|three\.?js|webgl|shader|gsap|motion|animation|rive|canvas|hero sections?)\b/i],
+  ["Dev Tools · CLI · Infra", /\b(cli|terminal|docker|self-?host|\bapi\b|dashboard|\bsdk\b|node|rust|python|swift|ios|sqlite|kanban|workflow|boilerplate|template|alternative|headless|prox(y|ies)|\bvpn\b|firecrawl)\b/i],
+  ["Scrapers · Downloads · Utilities", /\b(scraper|scrape|downloader?|torrent|crack|nulled|browser-use|playwright|stealth|osint|archive|udemy)\b/i],
+];
+function classify(text) {
+  for (const [label, re] of TOPICS) if (re.test(text)) return label;
+  return "Other";
+}
 function decode(s) {
   return s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
@@ -76,20 +93,32 @@ function byTopLevel(byFolder) {
 }
 
 function pageFor(top, subMap, date) {
-  const total = [...subMap.values()].reduce((n, x) => n + x.length, 0);
+  const all = [...subMap.values()].flat();
+  // Group by inferred topic (original sub-folders here are mostly flat, so topic
+  // grouping is what gives these pages structure).
+  const byTopic = new Map();
+  for (const it of all) {
+    const topic = classify(`${it.title} ${it.url}`);
+    if (!byTopic.has(topic)) byTopic.set(topic, []);
+    byTopic.get(topic).push(it);
+  }
+  const order = [...TOPICS.map((t) => t[0]), "Other"];
+  const present = order.filter((t) => byTopic.has(t));
+  const tags = ["bookmarks", slugify(top), ...present.filter((t) => t !== "Other").map(slugify)];
   const out = [
     "---",
-    `tags: [bookmarks, ${slugify(top)}]`,
+    `tags: [${tags.join(", ")}]`,
     "type: source",
     `created: ${date}`,
-    `count: ${total}`,
+    `count: ${all.length}`,
     "---",
     "",
     `# Bookmarks — ${top}`,
     "",
   ];
-  for (const [sub, items] of subMap) {
-    if (sub !== "(top level)") out.push(`## ${sub}`, "");
+  for (const topic of present) {
+    const items = byTopic.get(topic);
+    out.push(`## ${topic} (${items.length})`, "");
     for (const it of items.sort((a, b) => a.title.localeCompare(b.title))) {
       out.push(`- [${it.title}](${it.url})${it.date ? ` _(added ${it.date})_` : ""}`);
     }
