@@ -79,47 +79,49 @@ function parse(html) {
   return byFolder;
 }
 
-/** Group folder paths under their top-level category (drop the root "Bookmarks" wrapper). */
-function byTopLevel(byFolder) {
-  const tops = new Map();
-  for (const [path, items] of byFolder) {
-    const parts = path.split(" / ").filter((p) => p && p.toLowerCase() !== "bookmarks");
-    const top = parts[0] || "Uncategorized";
-    const sub = parts.slice(1).join(" / ") || "(top level)";
-    if (!tops.has(top)) tops.set(top, new Map());
-    tops.get(top).set(sub, items);
-  }
-  return tops;
+/** A link is a GitHub repo if its host is github.com / gist.github.com. */
+function isGithub(url) {
+  return /^https?:\/\/(www\.)?(gist\.)?github\.com\//i.test(url);
 }
 
-function pageFor(top, subMap, date) {
-  const all = [...subMap.values()].flat();
-  // Group by inferred topic (original sub-folders here are mostly flat, so topic
-  // grouping is what gives these pages structure).
+/** De-dupe by URL, keeping the first-seen (earliest folder) title. */
+function dedupe(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    if (seen.has(it.url)) continue;
+    seen.add(it.url);
+    out.push(it);
+  }
+  return out;
+}
+
+/** Render a type-page (github | sites): links grouped by inferred topic. */
+function renderPage(heading, slug, items, date) {
   const byTopic = new Map();
-  for (const it of all) {
+  for (const it of items) {
     const topic = classify(`${it.title} ${it.url}`);
     if (!byTopic.has(topic)) byTopic.set(topic, []);
     byTopic.get(topic).push(it);
   }
   const order = [...TOPICS.map((t) => t[0]), "Other"];
   const present = order.filter((t) => byTopic.has(t));
-  const tags = ["bookmarks", slugify(top), ...present.filter((t) => t !== "Other").map(slugify)];
+  const tags = ["bookmarks", slug, ...present.filter((t) => t !== "Other").map(slugify)];
   const out = [
     "---",
     `tags: [${tags.join(", ")}]`,
     "type: source",
     `created: ${date}`,
-    `count: ${all.length}`,
+    `count: ${items.length}`,
     "---",
     "",
-    `# Bookmarks — ${top}`,
+    `# Bookmarks — ${heading}`,
     "",
   ];
   for (const topic of present) {
-    const items = byTopic.get(topic);
-    out.push(`## ${topic} (${items.length})`, "");
-    for (const it of items.sort((a, b) => a.title.localeCompare(b.title))) {
+    const group = byTopic.get(topic);
+    out.push(`## ${topic} (${group.length})`, "");
+    for (const it of group.sort((a, b) => a.title.localeCompare(b.title))) {
       out.push(`- [${it.title}](${it.url})${it.date ? ` _(added ${it.date})_` : ""}`);
     }
     out.push("");
@@ -128,20 +130,24 @@ function pageFor(top, subMap, date) {
 }
 
 const html = readFileSync(htmlPath, "utf8");
-const tops = byTopLevel(parse(html));
+const allItems = dedupe([...parse(html).values()].flat());
+const repos = allItems.filter((it) => isGithub(it.url));
+const sites = allItems.filter((it) => !isGithub(it.url));
 const today = new Date().toISOString().slice(0, 10);
 
+// Type-first split (github repos vs websites), each topic-grouped — the original
+// bookmark folders mixed both, so URL is the reliable axis.
+const PAGES = [
+  ["GitHub Repos", "github", repos],
+  ["Sites", "sites", sites],
+];
+
 if (!DRY) mkdirSync(OUT, { recursive: true });
-let pages = 0, links = 0;
 const indexLines = ["# Bookmarks", "", `*Imported ${today}.*`, ""];
-for (const [top, subMap] of [...tops].sort((a, b) => a[0].localeCompare(b[0]))) {
-  const count = [...subMap.values()].reduce((n, x) => n + x.length, 0);
-  links += count;
-  pages++;
-  const file = `${slugify(top)}.md`;
-  if (!DRY) writeFileSync(join(OUT, file), pageFor(top, subMap, today), "utf8");
-  indexLines.push(`- [[${slugify(top)}|Bookmarks — ${top}]] — ${count} links`);
-  console.log(`  ${DRY ? "[dry] " : ""}${file.padEnd(28)} ${count} links`);
+for (const [heading, slug, items] of PAGES) {
+  if (!DRY) writeFileSync(join(OUT, `${slug}.md`), renderPage(heading, slug, items, today), "utf8");
+  indexLines.push(`- [[${slug}|Bookmarks — ${heading}]] — ${items.length} links`);
+  console.log(`  ${DRY ? "[dry] " : ""}${(slug + ".md").padEnd(14)} ${items.length} links`);
 }
 if (!DRY) writeFileSync(join(OUT, "_index.md"), indexLines.join("\n") + "\n", "utf8");
-console.log(`${DRY ? "[dry-run] " : ""}${pages} pages, ${links} links → ${OUT}`);
+console.log(`${DRY ? "[dry-run] " : ""}${PAGES.length} pages, ${allItems.length} links → ${OUT}`);
