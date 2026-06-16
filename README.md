@@ -174,6 +174,17 @@ Sources:
 
 It writes one `<source>-<date>-<title>-<hash>.md` per session, skips sessions with no real conversational turns, and is idempotent (re-running overwrites the same files). This is the **stage** step — distillation into `wiki/` is a separate, controllable LLM pass (see below) so you decide how much token spend goes into building the wiki.
 
+### Importing browser bookmarks
+
+`import-bookmarks.mjs` parses a Netscape bookmarks export (Chrome/Firefox/Safari → Export Bookmarks) straight into `wiki/bookmarks/` — one page per top-level folder, links grouped by sub-folder, base64 icons + `javascript:` bookmarklets stripped. Bookmarks are already structured reference, so they skip `raw/` and the LLM pass entirely (no tokens).
+
+```bash
+node import-bookmarks.mjs /path/to/your/vault ~/Desktop/bookmarks.html
+node import-bookmarks.mjs /path/to/your/vault ~/Desktop/bookmarks.html --dry-run   # preview counts
+```
+
+Each page gets frontmatter (`tags`, `type: source`, `count`) and a `wiki/bookmarks/_index.md` ties them together. Idempotent — re-export and re-run to refresh.
+
 ### Distilling raw/ → wiki/ in a loop
 
 `distill-loop.sh` runs the LLM pass with the [Codex CLI](https://github.com/openai/codex), in **resumable batches**. Processed files move to `raw/_processed/`, so each iteration starts with fresh context (flat per-batch cost) and you can `Ctrl-C` / re-run anytime without redoing work.
