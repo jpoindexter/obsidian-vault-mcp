@@ -1,0 +1,24 @@
+{
+  "name": "obsidian-vault-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for an Obsidian/Karpathy-style LLM wiki vault — read, search, self-ingest, and semantic similarity via local embeddings.",
+  "type": "module",
+  "main": "mcp-server.mjs",
+  "bin": {
+    "obsidian-vault-mcp": "./mcp-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp", "mcp-server", "model-context-protocol",
+    "obsidian", "obsidian-plugin", "obsidian-vault",
+    "knowledge-base", "second-brain", "personal-knowledge-management", "pkm",
+    "llm-wiki", "karpathy", "karpathy-wiki",
+    "claude", "claude-code", "anthropic",
+    "ai-agent", "agentic", "self-improving",
+    "semantic-search", "embeddings", "ollama",
+    "markdown", "note-taking", "rag"
+  ],
+  "license": "MIT"
+}
