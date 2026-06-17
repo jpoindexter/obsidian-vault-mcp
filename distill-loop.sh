@@ -28,6 +28,11 @@ else
   SANDBOX=(-s workspace-write)
 fi
 
+# Optional model override (e.g. MODEL=gpt-5 ./distill-loop.sh ...) for when the
+# default is at capacity. Empty = codex default.
+MODEL_ARG=()
+[ -n "${MODEL:-}" ] && MODEL_ARG=(-m "$MODEL")
+
 PROMPT="You are my LLM-wiki librarian. The vault has raw/ (staged chat sessions) and wiki/
 (the structured knowledge base: concepts/ entities/ sources/ analysis/ + index.md,
 hot.md, log.md). Karpathy LLM-wiki pattern: index-first, [[wikilinks]] for relations,
@@ -47,7 +52,8 @@ Do EXACTLY ONE batch, then stop:
      make NO page. Just move it on.
    - Move the raw file to raw/_processed/ when done (processed = moved, always).
 3. After the batch: update wiki/index.md (add new pages under the right section, keep it
-   under ~200 lines), append ONE line to wiki/log.md (date · files processed · pages
+   under ~200 lines; PRESERVE the existing '## Bookmarks' section and its links — never
+   remove it), append ONE line to wiki/log.md (date · files processed · pages
    created/updated · one-line summary), and rewrite wiki/hot.md (~500 words: what was
    just learned + the most active threads).
 4. Stop. Do not start another batch — I re-invoke you in a loop.
@@ -55,11 +61,25 @@ Do EXACTLY ONE batch, then stop:
 Be ruthless about noise: a page must earn its place. No page for status updates,
 greetings, or tool spam. Quality over coverage."
 
+fails=0
+MAX_FAILS="${MAX_FAILS:-20}"   # give up only after this many CONSECUTIVE failures
+WAIT="${WAIT:-90}"             # seconds to wait between retries (capacity errors are transient)
+
 while :; do
   remaining=$(find "$VAULT/raw" -maxdepth 1 -name '*.md' -type f | wc -l | tr -d ' ')
   echo "── remaining raw files: $remaining ──"
   [ "$remaining" -eq 0 ] && { echo "✓ done — raw/ fully distilled"; break; }
 
-  codex exec -C "$VAULT" "${SANDBOX[@]}" --skip-git-repo-check "$PROMPT" \
-    || { echo "✗ codex exec failed — stopping (progress saved in raw/_processed/)"; break; }
+  if codex exec -C "$VAULT" "${SANDBOX[@]}" "${MODEL_ARG[@]}" --skip-git-repo-check "$PROMPT"; then
+    fails=0
+  else
+    fails=$((fails + 1))
+    echo "⚠ codex exec failed (consecutive: $fails/$MAX_FAILS) — likely model-at-capacity."
+    if [ "$fails" -ge "$MAX_FAILS" ]; then
+      echo "✗ $MAX_FAILS failures in a row — stopping (progress saved in raw/_processed/; just re-run to resume)."
+      break
+    fi
+    echo "  waiting ${WAIT}s then retrying (set MODEL=<other> to switch model)…"
+    sleep "$WAIT"
+  fi
 done
